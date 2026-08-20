@@ -241,7 +241,7 @@ PlasmaExtras.Representation {
                                 }
 
                                 Rectangle {
-                                    visible: full.companion && full.companion.rarity
+                                    visible: Boolean(full.companion && full.companion.rarity)
                                     radius: height / 2
                                     color: full.companion ? full.rarityColor(full.companion.rarity) : "grey"
                                     implicitWidth: rarityLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
@@ -250,7 +250,8 @@ PlasmaExtras.Representation {
                                     PlasmaComponents.Label {
                                         id: rarityLabel
                                         anchors.centerIn: parent
-                                        text: full.companion ? full.companion.rarity.toUpperCase() : ""
+                                        text: full.companion && full.companion.rarity
+                                              ? full.companion.rarity.toUpperCase() : ""
                                         color: "white"
                                         font.pointSize: Kirigami.Theme.smallFont.pointSize
                                         font.bold: true
@@ -259,7 +260,7 @@ PlasmaExtras.Representation {
 
                                 PlasmaComponents.Label {
                                     text: "✨"
-                                    visible: full.companion && full.companion.is_shiny
+                                    visible: Boolean(full.companion && full.companion.is_shiny)
                                 }
                             }
 
@@ -306,7 +307,7 @@ PlasmaExtras.Representation {
                     // --- evolution line strip ---
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: full.companion && full.companion.evo_line
+                        visible: Boolean(full.companion && full.companion.evo_line)
                                  && full.companion.evo_line.length > 1
                         spacing: Kirigami.Units.largeSpacing
 
@@ -372,7 +373,7 @@ PlasmaExtras.Representation {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: full.periods && full.periods.week
+                        visible: Boolean(full.periods && full.periods.week)
                         spacing: Kirigami.Units.smallSpacing
 
                         PlasmaComponents.Label { text: i18n("This week"); opacity: 0.6 }
