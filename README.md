@@ -98,7 +98,7 @@ Official limits are read for Claude accounts.
 
 ### Requirements
 
-- KDE Plasma 6 (developed on 6.7.4, Qt 6.11)
+- KDE Plasma 6 (developed on 6.7.4, Qt 6.11), or Plasma 5.27 with Qt 5.15
 - Python 3.12+
 - `libnotify` for notifications (optional)
 - `python-orjson` for ~2× faster parsing (optional)
@@ -112,9 +112,11 @@ makepkg -si
 systemctl --user enable --now poketokend
 ```
 
-Installs system-wide with no venv. Remove with `sudo pacman -R poketokenbar-plasma`.
+Installs system-wide with no venv. This package currently targets Plasma 6;
+Plasma 5 users should use the compatibility installer below. Remove with
+`sudo pacman -R poketokenbar-plasma`.
 
-### Any other distro
+### Any other distro — Plasma 6
 
 ```bash
 git clone https://github.com/rubensanchezrivero/poketokenbar-plasma.git
@@ -123,6 +125,21 @@ cd poketokenbar-plasma
 ```
 
 Self-contained: creates its own venv and installs everything under `$HOME`.
+
+### KDE Plasma 5.27
+
+Plasma 5 uses Qt 5 and different QML APIs. A compatibility build is included
+for systems that cannot upgrade to Plasma 6:
+
+```bash
+./install.sh --plasma5
+```
+
+This installs the same Python daemon and generated Plasma 5 versions of both
+widgets. The Plasma 6 source remains canonical, so fixes to the UI are shared
+between both builds. Plasma versions older than 5.27 are not supported. If the
+widget browser was already open or an incompatible copy was already loaded,
+restart Plasma Shell (or log out and back in) after installation.
 
 ### Widgets only
 
@@ -134,6 +151,14 @@ kpackagetool6 -t Plasma/Applet -i dist/org.kde.plasma.poketokenpet.plasmoid
 
 Then right-click your panel → **Add Widgets** → **PokeTokenBar**.
 For the desktop pet, add **PokeTokenBar Pet** to your desktop.
+
+For Plasma 5, build and install the compatibility bundles instead:
+
+```bash
+./packaging/build-plasmoids5.sh
+kpackagetool5 -t Plasma/Applet -i dist/plasma5/org.kde.plasma.poketokenbar.plasmoid
+kpackagetool5 -t Plasma/Applet -i dist/plasma5/org.kde.plasma.poketokenpet.plasmoid
+```
 
 ## Data sources
 
