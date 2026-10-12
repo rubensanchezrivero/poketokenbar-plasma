@@ -12,17 +12,64 @@ from .burn import BurnTracker
 from .notify import Notifier
 from .status import StatusChecker
 from .limits_source import LimitsSource
+from .multi_limits import MultiLimitsSource, busiest
 from .pokeapi import PokeAPI
 from .sprites import SpriteStore
 from .cache import ScanCache
 from .models import DailyUsage
 
 
+def _status_from_row(row: dict):
+    """Rebuild a LimitStatus from an account row, for the panel and burn."""
+    from . import limits as _limits
+
+    status = _limits.LimitStatus()
+    for key in ("session", "weekly"):
+        window = row.get(key)
+        if window is None:
+            continue
+        setattr(
+            status,
+            key,
+            _limits.LimitWindow(
+                float(window.get("utilization") or 0.0),
+                window.get("resets_at"),
+                window.get("severity"),
+            ),
+        )
+    status.subscription_type = row.get("plan")
+    status.account = {
+        "uuid": row.get("id", ""),
+        "email": row.get("email", ""),
+        "display_name": row.get("display_name", ""),
+        "organization": row.get("organization", ""),
+    }
+    return status
+
+
+def _windows_by_account(rows: list, fallback) -> dict:
+    """Utilization per account+window, e.g. {"<id>:session": 71.0}."""
+    out: dict = {}
+    if rows:
+        for row in rows:
+            for kind in ("session", "weekly"):
+                window = row.get(kind)
+                if window is not None:
+                    out[f"{row['id']}:{kind}"] = float(window.get("utilization") or 0.0)
+        return out
+    if fallback is not None:
+        if fallback.session is not None:
+            out["session"] = fallback.session.utilization
+        if fallback.weekly is not None:
+            out["weekly"] = fallback.weekly.utilization
+    return out
+
+
 class Daemon:
     def __init__(
         self, state_path: Path, config_path: Path, cache, providers,
         limits_source=None, companion_store=None, notifier=None,
-        burn_tracker=None, status_checker=None,
+        burn_tracker=None, status_checker=None, accounts_source=None,
     ) -> None:
         self.state_path = state_path
         self.config_path = config_path
@@ -37,6 +84,8 @@ class Daemon:
         # what the percentages mean, so cached limits and burn history from the
         # previous account must not carry over.
         self._account_uuid: str | None = None
+        # Every configured Claude account, for per-account limits.
+        self.accounts_source = accounts_source
         self.status_checker = status_checker
         self.spool: Path | None = None
         self.config_values = config.load(config_path)
@@ -105,21 +154,25 @@ class Daemon:
                 bucket["tokens"] += result[key]["tokens"]
                 bucket["cost"] += result[key]["cost"]
 
+        account_rows: list = []
         limit_status = None
-        if self.limits_source is not None:
-            # Best effort: limits failing hides that section but must never
-            # affect the token counts, which come from local logs.
+        if self.accounts_source is not None:
+            # Per-account limits. One account's failure or rate limit must not
+            # hide the others, so each is fetched and cached independently.
+            try:
+                account_rows = self.accounts_source.get()
+            except Exception as exc:
+                errors.append(f"accounts: {exc}")
+            for row in account_rows:
+                if row.get("error"):
+                    errors.append(f"{row['short_label']}: {row['error']}")
+            # The panel shows one account: the one nearest a cap.
+            lead = busiest(account_rows)
+            if lead is not None:
+                limit_status = _status_from_row(lead)
+        elif self.limits_source is not None:
+            # Single-account fallback (tests, or a host with one config dir).
             limit_status = self.limits_source.get()
-            if limit_status is not None and limit_status.account:
-                uuid = limit_status.account.get("uuid") or ""
-                if self._account_uuid is not None and uuid != self._account_uuid:
-                    # A different account's utilization is a different scale;
-                    # a slope fitted across the switch would be meaningless.
-                    if self.burn is not None:
-                        self.burn = type(self.burn)()
-                    self.limits_source.invalidate()
-                    limit_status = self.limits_source.get()
-                self._account_uuid = uuid
             if self.limits_source.last_error:
                 errors.append(f"limits: {self.limits_source.last_error}")
 
@@ -143,16 +196,14 @@ class Daemon:
                 companion_payload = self.companion_store.payload(
                     today_tokens=today_total, limit_warning=limit_warning
                 )
-                # Candy and notifications ride on fresh limits.
-                if limit_status is not None:
-                    windows = {}
-                    if limit_status.session is not None:
-                        windows["session"] = limit_status.session.utilization
-                    if limit_status.weekly is not None:
-                        windows["weekly"] = limit_status.weekly.utilization
+                # Candy and notifications ride on fresh limits, keyed per
+                # account. Keying by window alone would let the panel's "busiest"
+                # account change and re-grant for a window already paid out.
+                windows = _windows_by_account(account_rows, limit_status)
+                if windows:
                     if self.burn is not None:
-                        for kind, utilization in windows.items():
-                            self.burn.record(kind, utilization)
+                        for key, utilization in windows.items():
+                            self.burn.record(key, utilization)
                     self.companion_store.grant_candy(windows)
                     if self.notifier is not None and self.config_values.get(
                         "limit_notifications", True
@@ -198,6 +249,7 @@ class Daemon:
             periods=periods,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,
+            accounts=account_rows,
             celebration=self.companion_store.celebration if self.companion_store else None,
         )
         state.write(self.state_path, payload)
@@ -236,7 +288,8 @@ def main() -> int:
         config_path=config.default_path(),
         cache=cache,
         providers=[ClaudeProvider(cache=cache), CodexProvider(cache=cache)],
-        limits_source=LimitsSource(),
+        limits_source=None,
+        accounts_source=MultiLimitsSource(),
         companion_store=CompanionStore(
             api=PokeAPI(), sprite_store=SpriteStore()
         ),

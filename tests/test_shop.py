@@ -161,3 +161,36 @@ def test_window_key_excludes_volatile_fields():
     # it re-fired the notification each refresh in the Swift app.
     assert shop.window_key("weekly") == "limit:weekly"
     assert "resets" not in shop.window_key("weekly")
+
+
+# --- multi-account window keys ---------------------------------------------
+
+
+def test_weekly_grant_survives_an_account_prefixed_key():
+    # Keys became "<account-id>:weekly" for multi-account support. A plain
+    # `kind == "weekly"` check silently downgrades the payout to the session
+    # amount, which no existing test caught.
+    s = CompanionState()
+    shop.grant_candy(s, {"acct-1:weekly": 10.0})
+    assert shop.grant_candy(s, {"acct-1:weekly": 100.0}) == balance.RARE_CANDY_WEEKLY_GRANT
+
+
+def test_session_grant_survives_an_account_prefixed_key():
+    s = CompanionState()
+    shop.grant_candy(s, {"acct-1:session": 10.0})
+    assert shop.grant_candy(s, {"acct-1:session": 100.0}) == balance.RARE_CANDY_SESSION_GRANT
+
+
+def test_two_accounts_filling_the_same_window_both_pay_out():
+    s = CompanionState()
+    shop.grant_candy(s, {"a:session": 10.0, "b:session": 10.0})
+    granted = shop.grant_candy(s, {"a:session": 100.0, "b:session": 100.0})
+    assert granted == balance.RARE_CANDY_SESSION_GRANT * 2
+
+
+def test_one_account_filling_twice_still_pays_out_once():
+    s = CompanionState()
+    shop.grant_candy(s, {"a:session": 10.0})
+    first = shop.grant_candy(s, {"a:session": 100.0})
+    second = shop.grant_candy(s, {"a:session": 100.0})
+    assert first > 0 and second == 0

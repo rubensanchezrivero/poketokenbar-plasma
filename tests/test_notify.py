@@ -71,3 +71,19 @@ def test_windows_are_tracked_independently():
     n.limits({"session": 85.0, "weekly": 10.0}, warn=80, crit=95)
     n.limits({"session": 85.0, "weekly": 85.0}, warn=80, crit=95)
     assert len(spy.sent) == 2
+
+
+def test_label_survives_an_account_prefixed_key():
+    # Keys are "<account-id>:session" with several accounts; a plain equality
+    # check against "session" labelled every alert "weekly".
+    spy = Spy()
+    Notifier(spy).limits({"acct-1:session": 85.0}, warn=80, crit=95)
+    assert "5-hour" in spy.sent[0][0].lower()
+
+
+def test_accounts_are_tracked_independently():
+    spy = Spy()
+    n = Notifier(spy)
+    n.limits({"a:session": 85.0, "b:session": 10.0}, warn=80, crit=95)
+    n.limits({"a:session": 85.0, "b:session": 85.0}, warn=80, crit=95)
+    assert len(spy.sent) == 2

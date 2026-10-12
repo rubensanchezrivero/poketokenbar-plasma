@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import format as fmt
 from . import l10n, limits
+from .multi_limits import busiest
 from .models import DailyUsage
 
 SCHEMA_VERSION = 1
@@ -62,6 +63,7 @@ def build(
     periods: dict | None = None,
     burn: dict | None = None,
     provider_status: dict | None = None,
+    accounts: list | None = None,
     celebration: dict | None = None,
 ) -> dict:
     total_tokens = sum(d.total_tokens for d in daily_by_provider.values())
@@ -96,6 +98,7 @@ def build(
             for pid, d in daily_by_provider.items()
         },
         "limits": _limits_payload(limit_status),
+        "accounts": accounts or [],
         "companion": companion_payload or {},
         "shop": shop_payload or [],
         "bag": bag_payload or [],
@@ -118,6 +121,9 @@ def build(
             "limit_text": limits.panel_text(limit_status, limit_mode)
             if config_values.get("show_limit_in_menu")
             else "",
+            # Which account the panel's numbers belong to. With several
+            # accounts the percentages are meaningless unlabelled.
+            "account_label": (busiest(accounts).get("short_label") if accounts else ""),
             # Structured form so the panel can colour each number on its own.
             "limit_windows": [
                 {

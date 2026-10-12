@@ -188,7 +188,25 @@ Where the app keeps its own state:
 
 ### If you use several Claude accounts
 
-Session logs carry **no account marker**, so token totals from every account on the machine are summed and cannot be separated. Limits come from whichever account is currently logged in — so the popup names that account beside them. To keep accounts apart, give each its own `CLAUDE_CONFIG_DIR`.
+All of them are found automatically. Any `~/.claude*` directory holding a
+`.credentials.json` is treated as an account (plus `$CLAUDE_CONFIG_DIR`), so a
+layout like `~/.claude`, `~/.claude-work`, `~/.claude-side` needs no
+configuration.
+
+**Limits are per account.** Each is fetched and cached independently, so one
+account being rate-limited or logged out never hides the others. The popup lists
+every account with its own 5-hour and weekly windows, and hovering the panel
+shows them all at once.
+
+**The panel shows one account**: whichever is nearest a cap, measured across both
+its windows, with a short tag so you know which. An account at 35% session but
+87% weekly outranks one at 66% session.
+
+**Token totals cannot be split per account.** Claude Code writes session logs per
+*project directory*, not per account, and the lines carry no account marker —
+secondary config dirs usually symlink `projects/` back to the default one. So
+today, week, and month are the combined total across every account, and that is
+a property of the logs, not a limitation of this port.
 
 ## What's missing
 

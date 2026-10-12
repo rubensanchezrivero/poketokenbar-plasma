@@ -66,15 +66,18 @@ class Notifier:
         Keyed by window kind alone. The Swift app re-notified on every refresh
         when volatile fields such as resets_at entered the key.
         """
-        for kind, utilization in windows.items():
+        for key, utilization in windows.items():
+            # "<account-id>:session" with several accounts; the label depends on
+            # the window, the edge state on the whole key.
+            kind = key.rsplit(":", 1)[-1]
             tier = 2 if utilization >= crit else (1 if utilization >= warn else 0)
-            previous = self._limit_tier.get(kind, 0)
+            previous = self._limit_tier.get(key, 0)
             if tier == 0:
-                self._limit_tier.pop(kind, None)  # rearm
+                self._limit_tier.pop(key, None)  # rearm
                 continue
             if tier <= previous:
                 continue
-            self._limit_tier[kind] = tier
+            self._limit_tier[key] = tier
             label = "5-hour" if kind == "session" else "weekly"
             self._send(
                 f"{label.capitalize()} limit at {utilization:.0f}%",

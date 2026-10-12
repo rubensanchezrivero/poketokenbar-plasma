@@ -30,6 +30,8 @@ PlasmaExtras.Representation {
     readonly property var activeCounts: collectionTabs.currentIndex === 1
                                         ? catchCounts : rarityCounts
     readonly property var burn: root.appState && root.appState.burn ? root.appState.burn : ({})
+    readonly property var accountRows: root.appState && root.appState.accounts
+                                       ? root.appState.accounts : []
     readonly property var strings: root.appState && root.appState.strings
                                    ? root.appState.strings : ({})
     readonly property var celebration: root.appState && root.appState.celebration
@@ -443,43 +445,16 @@ PlasmaExtras.Representation {
                     // --- limits ---
                     PlasmaExtras.Heading {
                         level: 4
-                        text: full.limits && full.limits.plan
-                              ? i18n("Limits (official) · %1", full.limits.plan.toUpperCase())
+                        text: full.accountRows.length > 1
+                              ? i18n("Limits (official) · %1 accounts", full.accountRows.length)
                               : i18n("Limits (official)")
                     }
 
-                    // Token totals sum every account used on this machine;
-                    // limits belong to whichever is logged in. Naming it keeps
-                    // that difference visible.
-                    PlasmaComponents.Label {
-                        visible: text.length > 0
-                        opacity: 0.7
-                        text: {
-                            if (!full.limits || !full.limits.account)
-                                return "";
-                            var a = full.limits.account;
-                            var who = a.email ? a.email : a.display_name;
-                            if (!who)
-                                return "";
-                            return a.organization
-                                   ? i18n("for %1 · %2", who, a.organization)
-                                   : i18n("for %1", who);
-                        }
-                    }
-
+                    // One block per configured Claude account. Token totals
+                    // cannot be split per account (the log tree is shared), but
+                    // limits are per-account, so each gets its own numbers.
                     Repeater {
-                        model: {
-                            if (!full.limits)
-                                return [];
-                            var out = [];
-                            if (full.limits.session)
-                                out.push({ "label": i18n("5-hour session"),
-                                           "kind": "session", "w": full.limits.session });
-                            if (full.limits.weekly)
-                                out.push({ "label": i18n("Weekly"),
-                                           "kind": "weekly", "w": full.limits.weekly });
-                            return out;
-                        }
+                        model: full.accountRows
 
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -487,45 +462,113 @@ PlasmaExtras.Representation {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                PlasmaComponents.Label { text: modelData.label }
-                                Item { Layout.fillWidth: true }
+
                                 PlasmaComponents.Label {
-                                    text: Math.round(modelData.w.utilization) + "%"
-                                    color: full.levelColor(modelData.w.utilization)
+                                    text: modelData.short_label
+                                    opacity: 0.75
                                     font.bold: true
+                                    visible: full.accountRows.length > 1
                                 }
-                            }
-
-                            PlasmaComponents.ProgressBar {
-                                Layout.fillWidth: true
-                                from: 0
-                                to: 100
-                                value: modelData.w.utilization
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
 
                                 PlasmaComponents.Label {
-                                    text: full.resetIn(modelData.w.resets_at)
+                                    text: modelData.display_name
+                                          ? modelData.display_name : modelData.email
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+
+                                PlasmaComponents.Label {
+                                    text: modelData.plan ? modelData.plan.toUpperCase() : ""
                                     opacity: 0.7
                                 }
+                            }
 
-                                Item { Layout.fillWidth: true }
+                            PlasmaComponents.Label {
+                                visible: text.length > 0
+                                text: modelData.error ? modelData.error : ""
+                                color: Kirigami.Theme.neutralTextColor
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
 
-                                PlasmaComponents.Label {
-                                    visible: text.length > 0
-                                    opacity: 0.9
-                                    color: Kirigami.Theme.neutralTextColor
-                                    text: {
-                                        var b = full.burn[modelData.kind];
-                                        if (!b || !b.eta_text)
-                                            return "";
-                                        return i18n("at this rate, full at %1", b.eta_text);
+                            Repeater {
+                                model: {
+                                    var out = [];
+                                    if (modelData.session)
+                                        out.push({ "label": i18n("5-hour session"),
+                                                   "kind": "session",
+                                                   "id": modelData.id,
+                                                   "w": modelData.session });
+                                    if (modelData.weekly)
+                                        out.push({ "label": i18n("Weekly"),
+                                                   "kind": "weekly",
+                                                   "id": modelData.id,
+                                                   "w": modelData.weekly });
+                                    return out;
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        PlasmaComponents.Label {
+                                            text: modelData.label
+                                            opacity: 0.85
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        PlasmaComponents.Label {
+                                            text: Math.round(modelData.w.utilization) + "%"
+                                            color: full.levelColor(modelData.w.utilization)
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    PlasmaComponents.ProgressBar {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: 100
+                                        value: modelData.w.utilization
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        PlasmaComponents.Label {
+                                            text: full.resetIn(modelData.w.resets_at)
+                                            opacity: 0.7
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        PlasmaComponents.Label {
+                                            visible: text.length > 0
+                                            opacity: 0.9
+                                            color: Kirigami.Theme.neutralTextColor
+                                            text: {
+                                                var b = full.burn[modelData.id + ":" + modelData.kind];
+                                                if (!b || !b.eta_text)
+                                                    return "";
+                                                return i18n("at this rate, full at %1", b.eta_text);
+                                            }
+                                        }
                                     }
                                 }
                             }
+
+                            Kirigami.Separator {
+                                Layout.fillWidth: true
+                                visible: full.accountRows.length > 1
+                            }
                         }
+                    }
+
+                    PlasmaComponents.Label {
+                        visible: full.accountRows.length === 0
+                        text: i18n("Limits unavailable")
+                        opacity: 0.7
                     }
 
                     // --- provider incidents ---

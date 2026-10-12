@@ -134,8 +134,12 @@ def grant_candy(state: CompanionState, windows: dict[str, float]) -> int:
     Returns how many candies were granted.
     """
     granted = 0
-    for kind, utilization in windows.items():
-        key = window_key(kind)
+    for key, utilization in windows.items():
+        # Keys may be "<account-id>:session" when several accounts are
+        # configured. The payout depends on the window, the edge state on the
+        # whole key, so each account earns its own candy once.
+        kind = key.rsplit(":", 1)[-1]
+        key = window_key(key)
         tier = 2 if utilization >= 100 else (1 if utilization >= 80 else 0)
         previous = state.candy_grant_tier.get(key, 0)
 
